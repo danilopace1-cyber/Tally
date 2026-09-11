@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Tally">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Tally Prompter</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -110,10 +110,11 @@
 </style>
 
 <style>
-  /* standalone-page additions: full-bleed shell and notch-safe chrome */
+  /* standalone-page additions: full-bleed shell, notch-safe chrome */
   html,body{margin:0;height:100%;overscroll-behavior:none}
   img{max-width:100%}
   .bar{padding-top:calc(10px + env(safe-area-inset-top))}
+  .sheet{padding-top:env(safe-area-inset-top)}
   .dock{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
   .scroller{-webkit-overflow-scrolling:touch}
 </style>
@@ -136,6 +137,10 @@
   <footer class="dock">
     <button id="run" class="primary">▶ Run</button>
     <button id="voice">● Voice</button>
+    <div class="seg">
+      <button id="prev" aria-label="Previous sentence" title="Previous sentence">◀ Prev</button>
+      <button id="next" aria-label="Next sentence" title="Next sentence">Next ▶</button>
+    </div>
     <button id="reset" class="ghost">Top</button>
     <div class="seg">
       <button id="smaller" aria-label="Smaller text">A−</button>
@@ -180,7 +185,8 @@
       <div class="field"><span>Saved scripts</span>
         <div class="saved" id="saved"></div>
       </div>
-      <p class="hint"><b>Run</b> scrolls at the WPM you set, whatever else is happening. <b>Voice</b> can be on at the same time: it snaps the cue to the words you've actually said and nudges the speed toward how fast you're talking, so a pause or an ad-lib doesn't leave you chasing the text. If the mic drops out, the scroll just carries on at your set speed. Tap any word to move the cue there. <code>Space</code> runs and pauses, <code>V</code> toggles voice, <code>↑ ↓</code> nudge a line, <code>Esc</code> opens this panel.</p>
+      <p class="hint"><b>Run</b> scrolls at the WPM you set, whatever else is happening. <b>Voice</b> can be on at the same time: it snaps the cue to the words you've actually said and nudges the speed toward how fast you're talking, so a pause or an ad-lib doesn't leave you chasing the text. If the mic drops out, the scroll just carries on at your set speed.</p>
+      <p class="hint"><b>Prev</b> restarts the sentence you're on — press it again to step back another. Handy when someone asks you to take it from the line before. You can also scroll with your finger and the cue adopts wherever you stop, or tap any single word to move it there. <code>Space</code> runs and pauses, <code>V</code> toggles voice, <code>← →</code> move a sentence, <code>↑ ↓</code> nudge a line, <code>Esc</code> opens this panel.</p>
     </div>
   </section>
 </div>
@@ -201,7 +207,7 @@
   }
 
   /* ---------- state ---------- */
-  var words = [], ptr = 0, curEl = null;
+  var words = [], ptr = 0, curEl = null, sentStarts = [0];
   var pos = 0;            // float word index — the scroll's true position
   var running = false;    // timed scroll
   var voice = false;      // voice correction
@@ -225,9 +231,12 @@
   function render(src){
     var frag = document.createDocumentFragment();
     words = []; curEl = null; ptr = 0; pos = 0;
+    sentStarts = [];
+    var opensSentence = true;
     src.split(/\n\s*\n/).forEach(function(para){
       var p = document.createElement('p');
       p.className = 'para';
+      opensSentence = true;                       // every paragraph starts fresh
       para.split(/\s+/).filter(Boolean).forEach(function(w){
         var s = document.createElement('span');
         s.className = 'w';
@@ -235,10 +244,13 @@
         s.dataset.i = words.length;
         p.appendChild(s);
         p.appendChild(document.createTextNode(' '));
+        if (opensSentence){ sentStarts.push(words.length); opensSentence = false; }
+        if (/[.!?…][)"'’”\]]*$/.test(w)) opensSentence = true;
         words.push({ norm: norm(w), el: s });
       });
       if (p.childNodes.length) frag.appendChild(p);
     });
+    if (!sentStarts.length) sentStarts = [0];
     scriptEl.replaceChildren(frag);
     pad();
     setPtr(0, true);
@@ -251,7 +263,7 @@
     scriptEl.style.paddingBottom = Math.round(h * 0.72) + 'px';
   }
 
-  function setPtr(i, instant){
+  function setPtr(i, instant, noScroll){
     i = Math.max(0, Math.min(words.length, i));
     var from = Math.min(ptr, i), to = Math.max(ptr, i);
     for (var k = from; k < to; k++) words[k].el.className = (k < i) ? 'w said' : 'w';
@@ -259,8 +271,27 @@
     ptr = i;
     curEl = words[i] ? words[i].el : null;
     if (curEl) curEl.classList.add('cur');
-    scrollTo(instant);
+    if (noScroll) target = scroller.scrollTop; else scrollTo(instant);
     remaining();
+  }
+
+  /* ---------- sentence navigation ---------- */
+  function sentenceAt(i){
+    var lo = 0, hi = sentStarts.length - 1, found = 0;
+    while (lo <= hi){
+      var mid = (lo + hi) >> 1;
+      if (sentStarts[mid] <= i){ found = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    return found;
+  }
+  // Back once restarts the sentence you're in; back again steps to the one before.
+  function jumpSentence(dir){
+    var i = Math.floor(pos), si = sentenceAt(i), t;
+    if (dir < 0) t = (i - sentStarts[si] > 2 || si === 0) ? sentStarts[si] : sentStarts[si - 1];
+    else t = sentStarts[Math.min(sentStarts.length - 1, si + 1)];
+    lastVoiceT = 0;
+    setPos(t, true);
+    status();
   }
 
   function setPos(p, instant){
@@ -281,6 +312,40 @@
     if (Math.abs(d) < 0.6){ scroller.scrollTop = target; raf = null; return; }
     scroller.scrollTop = scroller.scrollTop + d * 0.14;
     raf = requestAnimationFrame(glide);
+  }
+
+  /* ---------- hands beat the animation: dragging always wins ---------- */
+  var userScroll = false, idleTimer = null;
+  function grabScroll(){
+    userScroll = true;
+    if (raf){ cancelAnimationFrame(raf); raf = null; }
+  }
+  scroller.addEventListener('touchstart', grabScroll, { passive:true });
+  scroller.addEventListener('wheel', grabScroll, { passive:true });
+  scroller.addEventListener('scroll', function(){
+    if (!userScroll) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function(){
+      userScroll = false;
+      if (!running) syncFromScroll();   // where you left it is where you are
+    }, 350);
+  }, { passive:true });
+
+  // After a manual scroll, adopt the word sitting on the cue line as the position.
+  function syncFromScroll(){
+    if (!words.length) return;
+    var y = scroller.scrollTop + scroller.clientHeight * CUE;
+    var best = 0, bestD = Infinity;
+    for (var i = 0; i < words.length; i++){
+      var el = words[i].el, mid = el.offsetTop + el.offsetHeight / 2;
+      var d = Math.abs(mid - y);
+      if (d < bestD){ bestD = d; best = i; }
+      else if (mid > y + 500) break;
+    }
+    lastVoiceT = 0;
+    pos = best;
+    setPtr(best, true, true);
+    status();
   }
 
   /* ---------- the scroll engine: time moves it, voice corrects it ---------- */
@@ -487,6 +552,8 @@
   /* ---------- events ---------- */
   $('run').onclick   = function(){ running ? stopRun() : startRun(); };
   $('voice').onclick = function(){ voice ? stopVoice() : startVoice(); };
+  $('prev').onclick  = function(){ jumpSentence(-1); };
+  $('next').onclick  = function(){ jumpSentence(1); };
   $('reset').onclick = function(){ adapt = 1; heard = 0; lastVoiceT = 0; setPos(0, true); showHeard(); status(); };
   $('bigger').onclick  = function(){ settings.size = Math.min(80, settings.size + 4); save('tally.settings', settings); paint(); pad(); scrollTo(true); };
   $('smaller').onclick = function(){ settings.size = Math.max(18, settings.size - 4); save('tally.settings', settings); paint(); pad(); scrollTo(true); };
@@ -533,6 +600,8 @@
     else if (e.key === 'v' || e.key === 'V'){ $('voice').click(); }
     else if (e.key === 'ArrowDown'){ e.preventDefault(); lastVoiceT = 0; setPos(pos + 6); }
     else if (e.key === 'ArrowUp'){ e.preventDefault(); lastVoiceT = 0; setPos(pos - 6); }
+    else if (e.key === 'ArrowLeft'){ e.preventDefault(); jumpSentence(-1); }
+    else if (e.key === 'ArrowRight'){ e.preventDefault(); jumpSentence(1); }
     else if (e.key === 'Escape'){ sheet.hidden ? $('edit').click() : $('close').click(); }
   });
 
