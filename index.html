@@ -25,24 +25,31 @@
     --sans:'Archivo','Helvetica Neue',Helvetica,Arial,sans-serif;
     --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
     --size:34px;
+    /* control sizing — scales up on tablets, where this actually gets used */
+    --btn-fs:11px;
+    --btn-py:10px;
+    --btn-px:14px;
+    --chrome-fs:11px;
+    --thumb:16px;
+    --track:120px;
     color-scheme:dark;
   }
   *{box-sizing:border-box}
   [hidden]{display:none!important}
   body{background:var(--stage);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
 
-  .app{height:100dvh;min-height:520px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+  .app{height:100dvh;display:flex;flex-direction:column;position:relative;overflow:hidden}
 
   /* ---- top bar ---- */
   .bar{display:flex;align-items:center;gap:14px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+  .brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:var(--chrome-fs);letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
   .dot{width:9px;height:9px;border-radius:50%;background:var(--dim);flex:none;transition:background .2s ease,box-shadow .2s ease}
   .dot.moving{background:var(--mute)}
   .dot.live{background:var(--tally);box-shadow:0 0 0 4px rgba(226,61,46,.16);animation:breathe 1.9s ease-in-out infinite}
   @keyframes breathe{50%{box-shadow:0 0 0 7px rgba(226,61,46,.05)}}
-  .state{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--mute);flex:1 1 180px;min-width:0}
+  .state{font-family:var(--mono);font-size:var(--chrome-fs);letter-spacing:.06em;color:var(--mute);flex:1 1 180px;min-width:0}
   .state.warn{color:#E8B14C}
-  .clock{font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--mute);font-variant-numeric:tabular-nums}
+  .clock{font-family:var(--mono);font-size:var(--chrome-fs);letter-spacing:.06em;color:var(--mute);font-variant-numeric:tabular-nums}
   .clock b{color:var(--text);font-weight:500}
 
   /* ---- prompter stage ---- */
@@ -65,16 +72,22 @@
 
   /* ---- dock ---- */
   .dock{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;background:var(--panel);border-top:1px solid var(--line)}
-  button{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:9px 13px;border:1px solid var(--line);background:transparent;color:var(--text);border-radius:6px;cursor:pointer;transition:border-color .15s ease,background .15s ease}
+  button{font-family:var(--mono);font-size:var(--btn-fs);letter-spacing:.08em;text-transform:uppercase;padding:var(--btn-py) var(--btn-px);border:1px solid var(--line);background:transparent;color:var(--text);border-radius:6px;cursor:pointer;transition:border-color .15s ease,background .15s ease}
   button:hover{border-color:#3A423F}
   button.active{background:var(--raise);border-color:#3A423F}
   button.on{background:var(--tally);border-color:var(--tally);color:#fff}
   button.ghost{color:var(--mute)}
   .seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
-  .seg button{border:0;border-radius:0;padding:9px 11px}
+  .seg button{border:0;border-radius:0;padding:var(--btn-py) calc(var(--btn-px) - 3px)}
   .seg button+button{border-left:1px solid var(--line)}
-  .pace{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-size:11px;color:var(--mute);letter-spacing:.06em}
-  .pace input{width:96px;accent-color:var(--tally)}
+  .pace{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:var(--chrome-fs);color:var(--mute);letter-spacing:.06em}
+
+  /* the speed slider needs a thumb you can actually hit with a thumb */
+  .pace input[type=range]{-webkit-appearance:none;appearance:none;width:var(--track);height:var(--thumb);background:transparent;cursor:pointer}
+  .pace input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
+  .pace input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:var(--thumb);height:var(--thumb);border-radius:50%;background:var(--tally);margin-top:calc((4px - var(--thumb)) / 2)}
+  .pace input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--line)}
+  .pace input[type=range]::-moz-range-thumb{width:var(--thumb);height:var(--thumb);border:0;border-radius:50%;background:var(--tally)}
   .pace b{color:var(--text);font-weight:500;font-variant-numeric:tabular-nums}
   .heard{color:var(--tally);font-variant-numeric:tabular-nums}
   .push{flex:1}
@@ -101,7 +114,48 @@
 
   @media (max-width:520px){
     .clock{order:3}
-    .pace input{width:72px}
+    :root{--track:84px}
+  }
+
+  /* ---- tablets: this is the device it gets used on, so everything gets bigger ---- */
+  @media (min-width:700px){
+    :root{--btn-fs:14px;--btn-py:15px;--btn-px:21px;--chrome-fs:13px;--thumb:26px;--track:180px}
+    .bar{padding:14px 22px;gap:18px}
+    .dock{padding:14px 22px;gap:12px}
+    .pace{gap:14px}
+    .sheet-bar{padding:24px 0 18px}
+    textarea,select,input[type=text]{font-size:17px}
+    .field{font-size:11px}
+    .saved div{padding:15px 18px}
+    .saved p{font-size:16px}
+    .hint{font-size:15px}
+  }
+  @media (min-width:1100px){
+    :root{--btn-py:17px;--btn-px:24px;--btn-fs:15px}
+  }
+
+  /* ---- landscape on a phone: controls become a right-hand rail ---- */
+  @media (orientation:landscape) and (max-height:620px){
+    .app{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-rows:auto minmax(0,1fr)}
+    .bar{grid-column:1/-1;grid-row:1;flex-wrap:nowrap;padding:7px 14px;gap:10px}
+    .state{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .clock{order:0;flex:none}
+    .stage{grid-column:1;grid-row:2}
+    .sheet{grid-column:1/-1;grid-row:1/-1}
+
+    .dock{grid-column:2;grid-row:2;width:164px;flex-direction:column;align-items:stretch;
+          flex-wrap:nowrap;gap:7px;padding:10px;overflow-y:auto;
+          border-top:0;border-left:1px solid var(--line)}
+    .dock .push{display:none}
+    .dock button{padding:var(--btn-py) 8px}
+    .dock .seg{flex:none}
+    .dock .seg button{flex:1}
+    .pace{flex-wrap:wrap;gap:6px 8px}
+    .pace input{width:100%;order:3}
+
+    /* keep the read line from outgrowing a short screen */
+    .script{font-size:min(var(--size),6.6vh)}
+    .cue{top:28%}
   }
   @media (prefers-reduced-motion:reduce){
     .dot.live{animation:none}
@@ -117,6 +171,11 @@
   .sheet{padding-top:env(safe-area-inset-top)}
   .dock{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
   .scroller{-webkit-overflow-scrolling:touch}
+  @media (orientation:landscape){
+    .bar{padding-left:calc(14px + env(safe-area-inset-left));padding-right:calc(14px + env(safe-area-inset-right))}
+    .dock{padding-right:calc(10px + env(safe-area-inset-right))}
+    .scroller{padding-left:calc(clamp(16px,5vw,48px) + env(safe-area-inset-left))}
+  }
 </style>
 </head>
 <body>
@@ -157,7 +216,7 @@
     <button id="edit" class="ghost">Script</button>
   </footer>
 
-  <section class="sheet" id="sheet" hidden>
+  <section class="sheet" id="sheet">
     <div class="sheet-bar">
       <h2>Script</h2>
       <div class="push"></div>
@@ -257,7 +316,15 @@
     remaining();
   }
 
+  // The cue line's height is set in CSS and moves between layouts, so measure it
+  // rather than assume it — the scroll maths has to land on the same line.
+  function measureCue(){
+    var c = document.querySelector('.cue'), st = $('stage');
+    if (c && st && st.clientHeight) CUE = (c.offsetTop + c.offsetHeight / 2) / st.clientHeight;
+  }
+
   function pad(){
+    measureCue();
     var h = scroller.clientHeight || 400;
     scriptEl.style.paddingTop = Math.round(h * CUE) + 'px';
     scriptEl.style.paddingBottom = Math.round(h * 0.72) + 'px';
@@ -605,11 +672,20 @@
     else if (e.key === 'Escape'){ sheet.hidden ? $('edit').click() : $('close').click(); }
   });
 
-  addEventListener('resize', function(){ pad(); scrollTo(true); });
+  var relayout = null;
+  function reflow(){
+    clearTimeout(relayout);
+    relayout = setTimeout(function(){ pad(); scrollTo(true); }, 60);
+  }
+  addEventListener('resize', reflow);
+  addEventListener('orientationchange', function(){ setTimeout(reflow, 250); });
 
   paint();
   render(text);
   drawSaved();
+  // Open on the script screen: type or load a script, then Use this to read it.
+  $('text').value = text;
+  sheet.hidden = false;
   if (!(window.SpeechRecognition || window.webkitSpeechRecognition)){
     say('No speech recognition in this browser — Run still works', true);
   }
