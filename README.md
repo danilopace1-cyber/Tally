@@ -1,6 +1,6 @@
 Tally — a teleprompter that follows your voice
 
-https://danilopace1-cyber.github.io/Telly/
+https://danilopace1-cyber.github.io/Tally/
 
 Open the link on your phone. Optional but worth it: Share → Add to Home Screen, so it opens fullscreen like an app.
 Tap "Script", paste in what you want to read, then tap "Use this".
