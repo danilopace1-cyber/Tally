@@ -292,7 +292,7 @@
   var anchored = false;   // has voice confirmed you're reading where the cue is?
   var samples = 0;        // pace readings taken since voice started
   var heardIdx = -1, heardLen = 0, heardLast = '';  // the recogniser output already used
-  var recentWords = [];   // what the reader has said lately, to spot old speech re-issued
+  var pastWords = [], curWords = [];   // what the reader said lately: earlier phrases, and the one in progress
   var voiceFront = 0;     // furthest point voice has put the cue; only Run can overshoot it
   var pos = 0;            // float word index — the scroll's true position
   var running = false;    // timed scroll
@@ -329,7 +329,7 @@
   /* ---------- rendering ---------- */
   function render(src){
     var frag = document.createDocumentFragment();
-    words = []; curEl = null; ptr = 0; pos = 0; anchored = false; recentWords = []; voiceFront = 0;
+    words = []; curEl = null; ptr = 0; pos = 0; anchored = false; pastWords = []; curWords = []; voiceFront = 0;
     sentStarts = [];
     var opensSentence = true;
     src.split(/\n\s*\n/).forEach(function(para){
@@ -396,7 +396,7 @@
     var i = Math.floor(pos), si = sentenceAt(i), t;
     if (dir < 0) t = (i - sentStarts[si] > 2 || si === 0) ? sentStarts[si] : sentStarts[si - 1];
     else t = sentStarts[Math.min(sentStarts.length - 1, si + 1)];
-    lastVoiceT = 0; anchored = false; recentWords = [];
+    lastVoiceT = 0; anchored = false; pastWords = []; curWords = [];
     setPos(t, true);
     status();
   }
@@ -450,7 +450,7 @@
       if (d < bestD){ bestD = d; best = i; }
       else if (mid > y + 500) break;
     }
-    lastVoiceT = 0; anchored = false; recentWords = [];
+    lastVoiceT = 0; anchored = false; pastWords = []; curWords = [];
     pos = best; voiceFront = best;
     setPtr(best, true, true);
     status();
@@ -530,13 +530,16 @@
     return { at: best, score: bestScore };
   }
 
-  function rememberSaid(ws){
-    recentWords = recentWords.concat(ws).slice(-40);
+  // The memory mirrors exactly what the recogniser currently says, corrections
+  // included, so old speech it re-issues is always recognised as old.
+  function archivePhrase(){
+    pastWords = pastWords.concat(curWords).slice(-40); curWords = [];
   }
   function wasJustSaid(ws){
-    if (!ws.length || ws.length > recentWords.length) return false;
-    outer: for (var i = 0; i + ws.length <= recentWords.length; i++){
-      for (var j = 0; j < ws.length; j++) if (recentWords[i + j] !== ws[j]) continue outer;
+    var heard = pastWords.concat(curWords);
+    if (!ws.length || ws.length > heard.length) return false;
+    outer: for (var i = 0; i + ws.length <= heard.length; i++){
+      for (var j = 0; j < ws.length; j++) if (heard[i + j] !== ws[j]) continue outer;
       return true;
     }
     return false;
@@ -610,16 +613,19 @@
         var last = said[said.length - 1], revised = false;
         if (idx === heardIdx){
           // The same phrase re-sent while the recogniser tidies it up.
-          if (said.length < heardLen) return;
+          curWords = said;
+          if (said.length < heardLen){ heardLen = said.length; heardLast = last; return; }   // words merged: new baseline
           if (said.length === heardLen){
             if (last === heardLast) return;     // word for word the same: nothing new
             revised = true;                      // a half-heard last word, now corrected
-          } else rememberSaid(said.slice(heardLen));
+          }
         } else {
           // A fresh phrase made only of words just heard is old speech re-issued,
           // not the reader saying it again. Note it and move on.
-          if (wasJustSaid(said.slice(-5))){ heardIdx = idx; heardLen = said.length; heardLast = last; return; }
-          rememberSaid(said);
+          archivePhrase();
+          var reissued = wasJustSaid(said.slice(-5));
+          curWords = said;
+          if (reissued){ heardIdx = idx; heardLen = said.length; heardLast = last; return; }
         }
         heardIdx = idx; heardLen = said.length; heardLast = last;
         advance(said.slice(-5), revised);
@@ -633,7 +639,7 @@
           say('No microphone found — Run still works', true);
         }
       };
-      rec.onend = function(){ heardIdx = -1; heardLen = 0; heardLast = ''; if (voice){ try { rec.start(); } catch(e){} } };
+      rec.onend = function(){ archivePhrase(); heardIdx = -1; heardLen = 0; heardLast = ''; if (voice){ try { rec.start(); } catch(e){} } };
       rec.start();
     } catch(e){
       voice = false; paint();
@@ -641,7 +647,7 @@
       return;
     }
     voice = true;
-    lastVoiceT = 0; heard = settings.wpm; samples = 0; adapt = 1; anchored = false; recentWords = []; heardIdx = -1; heardLen = 0; heardLast = '';
+    lastVoiceT = 0; heard = settings.wpm; samples = 0; adapt = 1; anchored = false; pastWords = []; curWords = []; heardIdx = -1; heardLen = 0; heardLast = '';
     startClock(); keepAwake(); paint(); status();
   }
 
@@ -734,7 +740,7 @@
   $('voice').onclick = function(){ voice ? stopVoice() : startVoice(); };
   $('prev').onclick  = function(){ jumpSentence(-1); };
   $('next').onclick  = function(){ jumpSentence(1); };
-  $('reset').onclick = function(){ adapt = 1; heard = settings.wpm; samples = 0; lastVoiceT = 0; anchored = false; recentWords = []; setPos(0, true); showHeard(); status(); };
+  $('reset').onclick = function(){ adapt = 1; heard = settings.wpm; samples = 0; lastVoiceT = 0; anchored = false; pastWords = []; curWords = []; setPos(0, true); showHeard(); status(); };
   $('bigger').onclick  = function(){ settings.size = Math.min(120, Math.round(settings.size * 1.1)); save('telly.settings', settings); paint(); pad(); scrollTo(true); };
   $('smaller').onclick = function(){ settings.size = Math.max(18, Math.round(settings.size / 1.1)); save('telly.settings', settings); paint(); pad(); scrollTo(true); };
   $('mirror').onclick  = function(){ settings.mirror = !settings.mirror; save('telly.settings', settings); paint(); };
@@ -782,7 +788,7 @@
   scriptEl.onclick = function(e){
     var w = e.target.closest('.w');
     if (!w) return;
-    lastVoiceT = 0; anchored = false; recentWords = [];
+    lastVoiceT = 0; anchored = false; pastWords = []; curWords = [];
     setPos(+w.dataset.i, true);
     if (voice) status();
   };
@@ -794,8 +800,8 @@
     }
     if (e.key === ' '){ e.preventDefault(); $('run').click(); }
     else if (e.key === 'v' || e.key === 'V'){ $('voice').click(); }
-    else if (e.key === 'ArrowDown'){ e.preventDefault(); lastVoiceT = 0; anchored = false; recentWords = []; setPos(pos + 6); if (voice) status(); }
-    else if (e.key === 'ArrowUp'){ e.preventDefault(); lastVoiceT = 0; anchored = false; recentWords = []; setPos(pos - 6); if (voice) status(); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); lastVoiceT = 0; anchored = false; pastWords = []; curWords = []; setPos(pos + 6); if (voice) status(); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); lastVoiceT = 0; anchored = false; pastWords = []; curWords = []; setPos(pos - 6); if (voice) status(); }
     else if (e.key === 'ArrowLeft'){ e.preventDefault(); jumpSentence(-1); }
     else if (e.key === 'ArrowRight'){ e.preventDefault(); jumpSentence(1); }
     else if (e.key === 'Escape'){ sheet.hidden ? $('edit').click() : $('close').click(); }
