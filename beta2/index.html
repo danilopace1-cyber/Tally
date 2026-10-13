@@ -230,8 +230,8 @@
     <button id="mirror" class="ghost">Mirror</button>
     <div class="pace">
       <label for="wpm">WPM</label>
-      <input type="range" id="wpm" min="80" max="220" step="5">
-      <b id="wpmv">140</b>
+      <input type="range" id="wpm" min="50" max="220" step="5">
+      <b id="wpmv">50</b>
       <span class="heard" id="heard"></span>
     </div>
     <div class="push"></div>
@@ -242,15 +242,16 @@
     <div class="sheet-bar">
       <h2>Script</h2>
       <div class="push"></div>
+      <button id="clear" class="ghost">New script</button>
       <button id="close">Use this</button>
     </div>
     <div class="sheet-body">
       <label class="field" for="text">Words to read
-        <textarea id="text" spellcheck="true"></textarea>
+        <textarea id="text" spellcheck="true" placeholder="Paste or type your script here"></textarea>
       </label>
       <div class="row">
         <label class="field" for="name">Save as
-          <input type="text" id="name" placeholder="Hyrox first-timer tips">
+          <input type="text" id="name" placeholder="Script name">
         </label>
         <button id="save">Save</button>
         <label class="field" for="lang">Voice
@@ -278,7 +279,6 @@
   var scroller = $('scroller'), scriptEl = $('script'), sheet = $('sheet');
   var CUE = 0.31, reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var SAMPLE = "Three things I'd tell anyone doing their first Hyrox.\n\nNumber one — the running is not the hard part. Eight kilometres broken into one-kilometre chunks is manageable. What breaks people is running on legs that have just pushed a sled.\n\nNumber two — train the wall balls fresh and fatigued. A hundred reps at the end of a race is a completely different exercise to a hundred reps on a Tuesday morning.\n\nNumber three — practise your transitions. The roxzone is where the minutes quietly disappear. Walk it with intent, breathe, and get moving again before your heart rate settles.\n\nDo those three and you'll finish stronger than most first-timers.";
 
   var NUM = {'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine','10':'ten','11':'eleven','12':'twelve','13':'thirteen','14':'fourteen','15':'fifteen','16':'sixteen','17':'seventeen','18':'eighteen','19':'nineteen','20':'twenty','30':'thirty','40':'forty','50':'fifty','60':'sixty','100':'hundred','1000':'thousand'};
 
@@ -291,6 +291,7 @@
   var words = [], ptr = 0, curEl = null, sentStarts = [0];
   var anchored = false;   // has voice confirmed you're reading where the cue is?
   var samples = 0;        // pace readings taken since voice started
+  var heardIdx = -1, heardLen = 0;   // how much of the recogniser's output has been used
   var pos = 0;            // float word index — the scroll's true position
   var running = false;    // timed scroll
   var voice = false;      // voice correction
@@ -310,9 +311,12 @@
     }
   } catch(e){}
 
-  var settings = load('telly.settings', { size:34, wpm:140, mirror:false, lang:'en-GB' });
+  var settings = load('telly.settings', { size:34, wpm:50, mirror:false, lang:'en-GB' });
   var scripts  = load('telly.scripts', {});
-  var text     = load('telly.text', SAMPLE);
+  var text     = load('telly.text', '');
+  // Early builds opened with a sample script, and anyone who tapped "Use this" on it
+  // got it saved as their own. Clear it out so nobody keeps opening on it.
+  if (/^Three things I'd tell anyone doing their first Hyrox/.test(text)){ text = ''; save('telly.text', text); }
 
   function load(key, fallback){
     try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
@@ -535,7 +539,11 @@
       status();
       return;
     }
-    var ahead = bestMatch(tail, from, from + 30);
+    // How far ahead a match may land grows with the time since the last one:
+    // about five words a second plus slack, so after a pause it can still catch up.
+    var since = lastVoiceT ? (performance.now() - lastVoiceT) / 1000 : 6;
+    var reach = Math.min(30, 4 + Math.ceil(since * 5));
+    var ahead = bestMatch(tail, from, from + reach);
     var near = (ahead.at - from) <= 4;
     if (ahead.at >= 0 && ahead.score >= (near ? 1.0 : 1.6)){ correct(ahead.at + 1); return; }
     // Nothing ahead fits. If the cue has got in front of you, find you behind
@@ -581,9 +589,14 @@
       rec.interimResults = true;
       rec.lang = settings.lang;
       rec.onresult = function(e){
-        var r = e.results[e.results.length - 1];
-        var tail = r[0].transcript.split(/\s+/).map(norm).filter(Boolean).slice(-5);
-        advance(tail);
+        var idx = e.results.length - 1;
+        var said = e.results[idx][0].transcript.split(/\s+/).map(norm).filter(Boolean);
+        // The recogniser re-sends words it has already sent while it tidies them up.
+        // Only act when something new has been said: matching old words again is
+        // how the cue leapt to a repeated phrase further down the script.
+        if (idx === heardIdx && said.length <= heardLen) return;
+        heardIdx = idx; heardLen = said.length;
+        advance(said.slice(-5));
       };
       rec.onerror = function(e){
         if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
@@ -594,7 +607,7 @@
           say('No microphone found — Run still works', true);
         }
       };
-      rec.onend = function(){ if (voice){ try { rec.start(); } catch(e){} } };
+      rec.onend = function(){ heardIdx = -1; heardLen = 0; if (voice){ try { rec.start(); } catch(e){} } };
       rec.start();
     } catch(e){
       voice = false; paint();
@@ -602,7 +615,7 @@
       return;
     }
     voice = true;
-    lastVoiceT = 0; heard = settings.wpm; samples = 0; adapt = 1; anchored = false;
+    lastVoiceT = 0; heard = settings.wpm; samples = 0; adapt = 1; anchored = false; heardIdx = -1; heardLen = 0;
     startClock(); keepAwake(); paint(); status();
   }
 
@@ -650,6 +663,7 @@
     else if (running && voice) say('Running at ' + settings.wpm + ' wpm · following your voice');
     else if (running) say('Running at ' + settings.wpm + ' wpm');
     else if (voice) say('Voice only — the cue moves when you speak');
+    else if (pos >= words.length) say('End of script — Top to start again');
     else say('Paused at word ' + (Math.floor(pos) + 1) + ' of ' + words.length);
   }
   function paint(){
@@ -710,12 +724,27 @@
 
   $('edit').onclick = function(){ $('text').value = text; sheet.hidden = false; drawSaved(); $('text').focus(); };
   $('close').onclick = function(){
-    text = $('text').value.trim() || SAMPLE;
+    if (!$('text').value.trim()){ $('text').focus(); return; }   // nothing to read yet
+    text = $('text').value.trim();
     save('telly.text', text);
     sheet.hidden = true;
     render(text);
     status();
   };
+  // New script: empty the box in one tap. The old text is kept for a few seconds,
+  // so a mis-tap can be undone with a second tap.
+  var cleared = null, clearTimer = null;
+  function forgetCleared(){ cleared = null; clearTimeout(clearTimer); $('clear').textContent = 'New script'; }
+  $('clear').onclick = function(){
+    if (cleared){ $('text').value = cleared.text; $('name').value = cleared.name; forgetCleared(); return; }
+    cleared = { text: $('text').value, name: $('name').value };
+    $('text').value = ''; $('name').value = '';
+    $('text').focus();
+    this.textContent = 'Undo';
+    clearTimer = setTimeout(forgetCleared, 6000);
+  };
+  $('text').addEventListener('input', function(){ if (cleared) forgetCleared(); });
+
   $('save').onclick = function(){
     var n = $('name').value.trim();
     if (!n){ $('name').focus(); return; }
